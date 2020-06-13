@@ -1,0 +1,139 @@
+# Initial deployment parameters:
+---
+- hosts: localhost
+  gather_facts: yes
+  connection: local
+  any_errors_fatal: true
+
+# Variables:
+
+  vars:
+    AZURE_RM_CLIENTID: "476172de-4861-4ca7-b4cd-a1822848da3c"
+    AZURE_RM_SECRET: "TxY98HAzD6RBfSAH~EynmSkKO0yx4TYkFX"
+    AZURE_RM_TENANTID: "4b34392d-e7be-4c17-abc8-58bbaafd0cdd"
+    AZURE_RM_SUBSCRIPTIONID: "e5ef498b-1ba6-46ca-a014-0ba6dd681b1c"
+    var_resourceGroup: "AZ103Labs"
+    var_location: "eastus"
+    var_vnetID: "VNTUSE01"
+    var_vnetPrefix: "10.0.0.0/24"
+    var_subnetID: "SBNUSE0A"
+    var_subnetPrefix: "10.0.0.0/26"
+    var_nsgID: "NSGUSE01"
+    var_publicID: "AD-PublicIP"
+    var_windowsServerID: "DC01" 
+    var_windowsServerUser: "Cabalco"
+    var_windowsServerPass: "C4b4lc0.!.234$"
+
+# Connect to Subscription
+
+  tasks:
+  - name: Make azure dir
+    file:
+      path: ./.azure
+      state: directory
+  
+  - name: AZ Login
+    command: >
+        az login --service-principal
+        -u "{{ AZURE_RM_CLIENTID }}"
+        -p "{{ AZURE_RM_SECRET }}"
+        --tenant "{{ AZURE_RM_TENANTID }}"
+    no_log: False
+  
+  - name: Select Subscription
+    command: >
+        az account set
+        --subscription "{{ AZURE_RM_SUBSCRIPTIONID }}"
+  
+# Create Resource Group  
+  - name: Create a resource group
+    azure_rm_resourcegroup:
+      name: "{{ var_resourceGroup }}"
+      location: "{{ var_location }}"
+      client_id: "{{ AZURE_RM_CLIENTID }}"
+      secret: "{{ AZURE_RM_SECRET }}"
+      subscription_id: "{{ AZURE_RM_SUBSCRIPTIONID }}"
+      tenant: "{{ AZURE_RM_TENANTID }}"
+      tags:
+          owner: "Marcelo Carella" 
+          charge_code: "0010"
+  
+# Create Virtual Network
+  - name: Create a Vnet (USE)
+    azure_rm_virtualnetwork:
+      name: "{{ var_vnetID }}"
+      resource_group: "{{ var_resourceGroup }}"
+      location: "{{ var_location }}"
+      client_id: "{{ AZURE_RM_CLIENTID }}"
+      secret: "{{ AZURE_RM_SECRET }}"
+      subscription_id: "{{ AZURE_RM_SUBSCRIPTIONID }}"
+      tenant: "{{ AZURE_RM_TENANTID }}"
+      address_prefixes_cidr:
+        - "{{ var_vnetPrefix }}"
+      tags:
+          owner: "Marcelo Carella" 
+          charge_code: "0010"
+
+# Create NSG
+
+  - name: Create a NSG (USE)
+    azure_rm_securitygroup:
+      name: "{{ var_nsgID }}"
+      resource_group: "{{ var_resourceGroup }}"
+      client_id: "{{ AZURE_RM_CLIENTID }}"
+      secret: "{{ AZURE_RM_SECRET }}"
+      subscription_id: "{{ AZURE_RM_SUBSCRIPTIONID }}"
+      tenant: "{{ AZURE_RM_TENANTID }}"
+      purge_rules: yes
+      rules:
+          - name: Allow_Public
+            protocol: Tcp
+            access: Allow
+            priority: 100
+            direction: Inbound
+            source_address_prefix:
+              - '181.28.35.249/32'
+            destination_port_range: 3389
+      tags:
+          owner: "Marcelo Carella" 
+          charge_code: "0010"      
+
+# Create Subnet
+
+  - name: Create a Subnet (USE)
+    azure_rm_subnet:
+      name: "{{ var_subnetID }}"
+      resource_group: "{{ var_resourceGroup }}"
+      virtual_network_name: "{{ var_vnetID }}"
+      client_id: "{{ AZURE_RM_CLIENTID }}"
+      secret: "{{ AZURE_RM_SECRET }}"
+      subscription_id: "{{ AZURE_RM_SUBSCRIPTIONID }}"
+      tenant: "{{ AZURE_RM_TENANTID }}"
+      address_prefix_cidr: "{{ var_subnetPrefix }}"
+      security_group: "{{ var_nsgID }}"
+
+# Deploy Windows Server 
+
+  - name: Create a Windows Server (USE)
+    azure_rm_virtualmachine:
+      name: "{{ var_windowsServerID }}"
+      client_id: "{{ AZURE_RM_CLIENTID }}"
+      secret: "{{ AZURE_RM_SECRET }}"
+      tenant: "{{ AZURE_RM_TENANTID }}"
+      subscription_id: "{{ AZURE_RM_SUBSCRIPTIONID }}"
+      resource_group: "{{ var_resourceGroup }}"
+      virtual_network_name: "{{ var_vnetID }}"
+      subnet_name: "{{ var_subnetID }}"
+      admin_username: "{{ var_windowsServerUser }}"
+      admin_password: "{{ var_windowsServerPass }}"
+      public_ip_allocation_method: Dynamic
+      os_type: Windows
+      image:
+        offer: WindowsServer
+        publisher: MicrosoftWindowsServer
+        sku: "2016-Datacenter"
+        version: latest
+      vm_size: "Standard_DS1_v2"
+      tags:
+          owner: "Marcelo Carella"
+          charge_code: "0010"
